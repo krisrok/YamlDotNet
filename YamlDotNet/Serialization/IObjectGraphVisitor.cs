@@ -95,5 +95,13 @@ namespace YamlDotNet.Serialization
         /// <param name="sequence">The value that corresponds to the sequence.</param>
         /// <param name="context">The context that this implementation depend on.</param>
         void VisitSequenceEnd(IObjectDescriptor sequence, TContext context);
+
+        /// <summary>
+        /// Notifies the visitor the value part of a mapping has been traversed.
+        /// </summary>
+        /// <param name="key">The <see cref="IPropertyDescriptor"/> that provided access to <paramref name="value"/>.</param>
+        /// <param name="value">The value of the mapping that is about to be entered.</param>
+        /// <param name="context">The context that this implementation depend on.</param>
+        void VisitAfterValue(IPropertyDescriptor key, IObjectDescriptor value, TContext context);
     }
 }

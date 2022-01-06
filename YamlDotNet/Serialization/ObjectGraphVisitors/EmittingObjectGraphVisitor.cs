@@ -72,5 +72,8 @@ namespace YamlDotNet.Serialization.ObjectGraphVisitors
         {
             eventEmitter.Emit(new SequenceEndEventInfo(sequence), context);
         }
+
+        void IObjectGraphVisitor<IEmitter>.VisitAfterValue(IPropertyDescriptor propertyDescriptor, IObjectDescriptor propertyValue, IEmitter context)
+        { }
     }
 }

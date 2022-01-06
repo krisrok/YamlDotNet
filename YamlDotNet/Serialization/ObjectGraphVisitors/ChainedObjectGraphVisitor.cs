@@ -72,5 +72,10 @@ namespace YamlDotNet.Serialization.ObjectGraphVisitors
         {
             nextVisitor.VisitSequenceEnd(sequence, context);
         }
+
+        public virtual void VisitAfterValue(IPropertyDescriptor key, IObjectDescriptor value, IEmitter context)
+        {
+            nextVisitor.VisitAfterValue(key, value, context);
+        }
     }
 }

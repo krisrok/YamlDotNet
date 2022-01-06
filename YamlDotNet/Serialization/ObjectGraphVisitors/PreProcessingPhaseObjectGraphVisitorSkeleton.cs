@@ -105,5 +105,8 @@ namespace YamlDotNet.Serialization.ObjectGraphVisitors
         protected abstract void VisitScalar(IObjectDescriptor scalar);
         protected abstract void VisitSequenceEnd(IObjectDescriptor sequence);
         protected abstract void VisitSequenceStart(IObjectDescriptor sequence, Type elementType);
+
+        void IObjectGraphVisitor<Nothing>.VisitAfterValue(IPropertyDescriptor propertyDescriptor, IObjectDescriptor propertyValue, Nothing context)
+        { }
     }
 }

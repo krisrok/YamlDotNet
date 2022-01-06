@@ -244,6 +244,7 @@ namespace YamlDotNet.Serialization.ObjectGraphTraversalStrategies
                 {
                     Traverse(propertyDescriptor.Name, new ObjectDescriptor(propertyDescriptor.Name, typeof(string), typeof(string)), visitor, context, path);
                     Traverse(propertyDescriptor.Name, propertyValue, visitor, context, path);
+                    visitor.VisitAfterValue(propertyDescriptor, propertyValue, context);
                 }
             }
 
