@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using FluentAssertions;
 using Xunit;
 using Xunit.Abstractions;
@@ -6,6 +8,7 @@ using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.EventEmitters;
+using YamlDotNet.Serialization.ObjectGraphVisitors;
 
 namespace YamlDotNet.Test.Serialization
 {
@@ -207,6 +210,219 @@ namespace YamlDotNet.Test.Serialization
                     }
                 }
                 base.Emit(eventInfo, emitter);
+            }
+        }
+        #endregion
+
+        #region Inline comments
+//        [Fact]
+//        public void SFlowStyle_EmptyChild()
+//        {
+//            var yaml = @"
+//Foo: 0
+//Child: {Foo: 0, Child: { Child: , Foo: 0 }}";
+
+//            var deserializer = new Deserializer();
+//            Action action = () => deserializer.Deserialize<InlineComments>(yaml);
+//            action.ShouldNotThrow();
+//        }
+
+        [Fact]
+        public void SerializationWithInlineComment_WithReference()
+        {
+            var serializer = new SerializerBuilder()
+                .WithEmissionPhaseObjectGraphVisitor(e => new CustomCommentsObjectGraphVisitor(e.InnerVisitor), p => p.OnTop())
+                .Build();
+            var result = serializer.Serialize(new InlineComments { Child = new InlineComments() });
+            Output.WriteLine(result);
+
+            var deserializer = new Deserializer();
+            Action action = () => deserializer.Deserialize<InlineComments>(result);
+            action.ShouldNotThrow();
+
+            var lines = SplitByLines(result);
+            var indent1 = GetIndent(1);
+
+            lines.Should().Contain("Child: # Child: Inline for reference type");
+            lines.Should().Contain(indent1 + "Foo: 0 # Foo: Inline and single-line");
+        }
+
+        [Fact]
+        public void SerializationWithInlineComment_WithSequence()
+        {
+            var serializer = new SerializerBuilder()
+                .WithEmissionPhaseObjectGraphVisitor(e => new CustomCommentsObjectGraphVisitor(e.InnerVisitor), p => p.OnTop())
+                .Build();
+            var result = serializer.Serialize(new InlineComments { Children = new[] { new InlineComments() } });
+            Output.WriteLine(result);
+
+            var deserializer = new Deserializer();
+            Action action = () => deserializer.Deserialize<InlineComments>(result);
+            action.ShouldNotThrow();
+
+            var lines = SplitByLines(result);
+            var indent1 = GetIndent(1);
+
+            lines.Should().Contain("Children: # Children: Inline for sequence type");
+            lines.Should().Contain(indent1 + "Foo: 0 # Foo: Inline and single-line");
+        }
+
+        [Fact]
+        public void SerializationWithInlineComment_WithEmptyReferenceAndEmptySequence()
+        {
+            var serializer = new SerializerBuilder()
+                .WithEmissionPhaseObjectGraphVisitor(e => new CustomCommentsObjectGraphVisitor(e.InnerVisitor), p => p.OnBottom())
+                .Build();
+            var result = serializer.Serialize(new InlineComments());
+            Output.WriteLine(result);
+
+            var deserializer = new Deserializer();
+            Action action = () => deserializer.Deserialize<InlineComments>(result);
+            action.ShouldNotThrow();
+
+            var lines = SplitByLines(result);
+
+            lines.Should().Contain("Foo: 0 # Foo: Inline and single-line");
+            lines.Should().Contain("Bar: 00:00:00 # Bar: Inline and concatenated multi-line");
+            lines.Should().Contain("Child: # Child: Inline for reference type");
+            lines.Should().Contain("Children: # Children: Inline for sequence type");
+        }
+
+        class InlineComments
+        {
+            [CustomComment("Foo: Inline and single-line", true)]
+            public int Foo { get; set; }
+
+            [CustomComment("Bar: Inline\nand concatenated\nmulti-line", true)]
+            public TimeSpan Bar { get; set; }
+
+            [CustomComment("Child: Inline for reference type", true)]
+            public InlineComments Child { get; set; }
+
+            [CustomComment("Children: Inline for sequence type", true)]
+            public InlineComments[] Children { get; set; }
+        }
+
+        class InlineCommentsChild : InlineComments
+        { }
+
+        [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, Inherited = false, AllowMultiple = true)]
+        sealed class CustomCommentAttribute : Attribute
+        {
+            public string Description { get; private set; }
+            public bool IsInline { get; private set; }
+
+            public CustomCommentAttribute(string description, bool isInline = false)
+            {
+                Description = description;
+                IsInline = isInline;
+            }
+        }
+
+        public sealed class CustomCommentsObjectGraphVisitor : ChainedObjectGraphVisitor
+        {
+            public CustomCommentsObjectGraphVisitor(IObjectGraphVisitor<IEmitter> nextVisitor)
+                : base(nextVisitor)
+            { }
+
+            readonly Stack<IObjectDescriptor> waitingObjectDescriptors = new Stack<IObjectDescriptor>();
+            readonly Stack<CustomCommentAttribute> waitingAttributes = new Stack<CustomCommentAttribute>();
+
+            public override bool EnterMapping(IPropertyDescriptor key, IObjectDescriptor value, IEmitter context)
+            {
+                if (waitingObjectDescriptors.Count > 0)
+                {
+                    waitingObjectDescriptors.Pop();
+                    var cc = waitingAttributes.Pop();
+                    context.Emit(new Comment(cc.Description, true));
+                }
+
+                var result = base.EnterMapping(key, value, context);
+
+                var customComment = key.GetCustomAttribute<CustomCommentAttribute>();
+                if (customComment?.Description != null)
+                {
+                    if (customComment.IsInline && IsScalar(value))
+                    { }
+                    else if (customComment.IsInline && IsScalar(value) == false)
+                    {
+                        waitingObjectDescriptors.Push(value);
+                        waitingAttributes.Push(customComment);
+                    }
+                    else if (customComment.IsInline == false)
+                    {
+                        context.Emit(new Comment(customComment.Description, false));
+                    }
+                }
+
+                return result;
+            }
+
+            //public override void VisitSequenceStart(IObjectDescriptor sequence, Type elementType, IEmitter context)
+            //{
+            //    if (waitingObjectDescriptors.Count > 0)
+            //    {
+            //        waitingObjectDescriptors.Pop();
+            //        var cc = waitingAttributes.Pop();
+            //        context.Emit(new Comment(cc.Description, true));
+            //    }
+
+            //    base.VisitSequenceStart(sequence, elementType, context);
+            //}
+
+            public override void VisitMappingEnd(IObjectDescriptor mapping, IEmitter context)
+            {
+                if (waitingObjectDescriptors.Count > 0)
+                {
+                    waitingObjectDescriptors.Pop();
+                    var cc = waitingAttributes.Pop();
+                    context.Emit(new Comment(cc.Description, true));
+                }
+
+                base.VisitMappingEnd(mapping, context);
+            }
+
+            public override void VisitAfterValue(IPropertyDescriptor key, IObjectDescriptor value, IEmitter context)
+            {
+                base.VisitAfterValue(key, value, context);
+
+                if (IsScalar(value))
+                {
+                    var customComment = key.GetCustomAttribute<CustomCommentAttribute>();
+                    if (customComment?.Description != null)
+                    {
+                        if (customComment.IsInline)
+                        {
+                            context.Emit(new Comment(customComment.Description, true));
+                        }
+                    }
+                }
+            }
+
+            private static bool IsScalar(IObjectDescriptor value)
+            {
+                var typeCode = value.Type.GetTypeCode();
+                switch (typeCode)
+                {
+                    case TypeCode.Boolean:
+                    case TypeCode.Byte:
+                    case TypeCode.Int16:
+                    case TypeCode.Int32:
+                    case TypeCode.Int64:
+                    case TypeCode.SByte:
+                    case TypeCode.UInt16:
+                    case TypeCode.UInt32:
+                    case TypeCode.UInt64:
+                    case TypeCode.Single:
+                    case TypeCode.Double:
+                    case TypeCode.Decimal:
+                    case TypeCode.String:
+                    case TypeCode.Char:
+                    case TypeCode.DateTime:
+                        return true;
+                }
+
+                return value.Value == null || value.Type == typeof(TimeSpan);
             }
         }
         #endregion
