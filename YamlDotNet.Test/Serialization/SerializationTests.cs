@@ -37,6 +37,7 @@ using Xunit;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.EventEmitters;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization.ObjectFactories;
 
@@ -2213,6 +2214,54 @@ Cycle: *o0");
             public void WriteYaml(IEmitter emitter, object value, Type type)
             {
                 emitter.Emit(new Scalar(((NonSerializable)value).Text));
+            }
+        }
+
+        [Fact]
+        public void RoundtripEmptyReferenceWithFlowMapping()
+        {
+            var serializer = new SerializerBuilder()
+                .WithEventEmitter(e => new FlowEmitter(e, typeof(RoundtripClass)))
+                .Build();
+            var deserializer = new DeserializerBuilder()
+                .Build();
+
+            var yaml = serializer.Serialize(new RoundtripClass());
+
+            Action action = () => deserializer.Deserialize<RoundtripClass>(yaml);
+
+            action.ShouldNotThrow();
+        }
+
+        public class RoundtripClass
+        {
+            public RoundtripClass Foo { get; set; }
+        }
+
+        // <summary>
+        /// This emits objects of given types as flow mappings
+        /// </summary>
+        public class FlowEmitter : ChainedEventEmitter
+        {
+            private readonly Type[] types;
+
+            public FlowEmitter(IEventEmitter nextEmitter, params Type[] types) : base(nextEmitter)
+            {
+                this.types = types;
+            }
+
+            public override void Emit(MappingStartEventInfo eventInfo, IEmitter emitter)
+            {
+                foreach (var type in types)
+                {
+                    eventInfo.Style = MappingStyle.Flow;
+                    if (eventInfo.Source.Type == type)
+                    {
+                        eventInfo.Style = MappingStyle.Flow;
+                        break;
+                    }
+                }
+                base.Emit(eventInfo, emitter);
             }
         }
     }
