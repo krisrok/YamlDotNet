@@ -994,6 +994,12 @@ namespace YamlDotNet.Core
             if (!isWhitespace)
             {
                 Write(' ');
+
+                if (value.Length == 0)
+                {
+                    isWhitespace = true;
+                    return;
+                }
             }
 
             var previousSpace = false;
