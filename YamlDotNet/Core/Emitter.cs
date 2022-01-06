@@ -164,7 +164,6 @@ namespace YamlDotNet.Core
                 var current = events.Peek();
                 try
                 {
-
                     AnalyzeEvent(current);
                     StateMachine(current);
                 }
@@ -654,11 +653,16 @@ namespace YamlDotNet.Core
 
             if (comment.IsInline)
             {
-                Write(' ');
+                if (isWhitespace == false)
+                {
+                    Write(' ');
+                }
+                Write("# ");
                 Write(string.Join(' ', lines));
             }
             else
             {
+                // To make sure the comment has the same indentation as the following line:
                 // If we're about to enter a YAML block we need to manually increase the indent for the comment and then decrease again.
                 var isFirst = state == EmitterState.BlockMappingFirstKey;
 
